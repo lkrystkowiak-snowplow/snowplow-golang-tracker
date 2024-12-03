@@ -15,12 +15,16 @@ package common
 
 import (
 	"bytes"
+	"crypto/hmac"
+	"crypto/sha256"
 	"encoding/gob"
+	"encoding/hex"
 	"encoding/json"
-	"github.com/google/uuid"
 	"net/url"
 	"strconv"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // NewString returns a pointer to a string.
@@ -139,4 +143,10 @@ func CheckErr(err error) {
 	if err != nil {
 		panic(err.Error())
 	}
+}
+
+func GenerateHMAC(data []byte, secretKey string) string {
+	h := hmac.New(sha256.New, []byte(secretKey))
+	h.Write(data)
+	return hex.EncodeToString(h.Sum(nil))
 }

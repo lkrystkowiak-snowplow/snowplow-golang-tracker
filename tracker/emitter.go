@@ -22,6 +22,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/snowplow/snowplow-golang-tracker/v3/pkg/common"
@@ -62,6 +63,7 @@ type Emitter struct {
 	SendChannel   chan bool
 	Callback      func(successCount []CallbackResult, failureCount []CallbackResult)
 	HttpClient    *http.Client
+	SigningKey    *string
 }
 
 // InitEmitter creates a new Emitter object which handles
@@ -166,6 +168,11 @@ func OptionCallback(callback func(successCount []CallbackResult, failureCount []
 // OptionHttpClient sets a custom client for HTTP connections.
 func OptionHttpClient(client *http.Client) func(e *Emitter) {
 	return func(e *Emitter) { e.HttpClient = client }
+}
+
+// OptionSigningKey sets a signing key used when generating Snowplow-Signature header.
+func OptionSigningKey(signingKey *string) func(e *Emitter) {
+	return func(e *Emitter) { e.SigningKey = signingKey }
 }
 
 // --- Event Handlers
@@ -343,8 +350,19 @@ func (e *Emitter) sendPostRequest(url string, ids []int, body []payload.Payload,
 			DATA:   addSentTimeToEvents(body),
 		}
 
-		req, _ := http.NewRequest("POST", url, bytes.NewBufferString(common.MapToJson(postEnvelope)))
+		bodyStr := common.MapToJson(postEnvelope)
+		req, _ := http.NewRequest("POST", url, bytes.NewBufferString(bodyStr))
 		req.Header.Set("Content-Type", POST_CONTENT_TYPE)
+
+		if e.SigningKey != nil {
+			req.Header.Set("Snowplow-Signature", getSignatureHeader(bodyStr, *e.SigningKey))
+		}
+
+		for k, v := range req.Header {
+			println(k, strings.Join(v, ","))
+		}
+
+		println(bodyStr)
 
 		resp, err := e.HttpClient.Do(req)
 		if err != nil {
@@ -362,6 +380,11 @@ func (e *Emitter) sendPostRequest(url string, ids []int, body []payload.Payload,
 		result = SendResult{ids: ids, status: status}
 	}()
 	return c
+}
+
+func getSignatureHeader(body string, secretKey string) string {
+	sig := common.GenerateHMAC([]byte(body), secretKey)
+	return sig
 }
 
 // --- Helpers
